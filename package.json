@@ -1,0 +1,25 @@
+{
+  "name": "helicone-agent-tutorial",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@langchain/core": "^0.3.49",
+    "@langchain/openai": "^0.5.7",
+    "axios": "^1.9.0",
+    "dotenv": "^16.5.0",
+    "langchain": "^0.3.24",
+    "openai": "^4.96.0",
+    "ts-node": "^10.9.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "typescript": "^5.8.3"
+  }
+}
