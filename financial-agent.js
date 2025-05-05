@@ -1,4 +1,3 @@
-// Import required libraries
 import dotenv from 'dotenv';
 import axios from 'axios';
 import { OpenAI } from 'openai';
@@ -10,9 +9,13 @@ import readline from 'readline';
 // Load environment variables
 dotenv.config();
 
-// Initialize OpenAI client
+// Initialize OpenAI client with Helicone monitoring
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
+  baseURL: "https://oai.helicone.ai/v1",
+  defaultHeaders: {
+    "Helicone-Auth": `Bearer ${process.env.HELICONE_API_KEY}`,
+  },
 });
 
 // Alpha Vantage API key
@@ -338,7 +341,7 @@ async function processQuery(query, vectorStore) {
       }
     ];
     
-    // Generate response using OpenAI
+    // Generate response using OpenAI with Helicone monitoring
     const response = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages,
@@ -353,8 +356,11 @@ async function processQuery(query, vectorStore) {
     // Get relevant documents from vector store
     const results = await vectorStore.similaritySearch(query, 2);
     
+    // Add Helicone property for relevant document count
+    const hasRelevantResults = results.length > 0;
+    
     // Check if we have relevant results
-    if (results.length === 0 || results[0].score < 0.7) {
+    if (!hasRelevantResults || results[0].score < 0.7) {
       return "I don't have specific information about this financial term or concept in my knowledge base. For reliable financial information, please consider consulting a financial advisor, visiting financial education websites like Investopedia, or checking resources from financial regulatory bodies.";
     }
     
@@ -376,7 +382,7 @@ async function processQuery(query, vectorStore) {
       }
     ];
     
-    // Generate response using OpenAI with RAG context
+    // Generate response using OpenAI with RAG context and Helicone monitoring
     const response = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages,
@@ -399,6 +405,11 @@ async function main() {
   
   if (!process.env.ALPHA_VANTAGE_API_KEY) {
     console.error("Error: ALPHA_VANTAGE_API_KEY not found in environment variables");
+    process.exit(1);
+  }
+  
+  if (!process.env.HELICONE_API_KEY) {
+    console.error("Error: HELICONE_API_KEY not found in environment variables");
     process.exit(1);
   }
   
