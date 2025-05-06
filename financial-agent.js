@@ -221,46 +221,6 @@ async function initializeVectorStore() {
   return MemoryVectorStore.fromDocuments(docs, embeddings);
 }
 
-// LLM-based router function to determine query type and extract ticker if needed
-async function routeQuery(query) {
-  const response = await openai.chat.completions.create({
-    model: "gpt-3.5-turbo",
-    messages: [
-      {
-        role: "system",
-        content: `You are a financial query router that determines whether a query requires real-time stock data or a financial term definition.
-        
-        If the query is about a specific stock's price, performance, or news, categorize it as "STOCK_DATA" and extract the ticker symbol.
-        If the query is about a financial term, concept, or definition, categorize it as "FINANCIAL_TERM".
-        
-        Respond with a JSON object with two fields:
-        - routeTo: Either "STOCK_DATA" or "FINANCIAL_TERM"
-        - ticker: The ticker symbol if routeTo is "STOCK_DATA" (omit this field otherwise)
-        `
-      },
-      {
-        role: "user",
-        content: query
-      }
-    ],
-    temperature: 0.1,
-    response_format: { type: "json_object" }
-  });
-  
-  // Parse the JSON response
-  try {
-    const result = JSON.parse(response.choices[0].message.content || "{}");
-    return {
-      routeTo: result.routeTo,
-      ticker: result.ticker
-    };
-  } catch (error) {
-    console.error("Error parsing router response:", error);
-    // Default to financial term if parsing fails
-    return { routeTo: "FINANCIAL_TERM" };
-  }
-}
-
 // Function to get stock price data from Alpha Vantage
 async function getStockData(ticker) {
   try {
@@ -309,87 +269,179 @@ async function getStockNews(ticker) {
   }
 }
 
+// Function to perform vector search for financial terms
+async function searchFinancialTerms(query, vectorStore) {
+  console.log("Searching for financial term definitions in knowledge base...");
+  
+  // Get relevant documents from vector store with similarity scores
+  const resultsWithScores = await vectorStore.similaritySearchWithScore(query, 2);
+    
+  // Check if we have relevant results with good similarity scores
+  if (resultsWithScores.length === 0 || resultsWithScores[0][1] < 0.7) {
+    console.log("No relevant financial terms found in the knowledge base.");
+    return { 
+      found: false,
+      message: "No relevant financial terms found in the knowledge base."
+    };
+  }
+  
+  // Extract just the documents from the results for context
+  const relevantDocs = resultsWithScores.map(([doc]) => doc);
+  
+  return {
+    found: true,
+    documents: relevantDocs
+  };
+}
+
 // Main function to process user queries
 async function processQuery(query, vectorStore) {
-  // Use LLM to route the query
-  console.log("Routing query...");
-  const routingDecision = await routeQuery(query);
-  console.log(`Query routed to: ${routingDecision.routeTo}${routingDecision.ticker ? `, Ticker: ${routingDecision.ticker}` : ''}`);
-  
-  // Handle based on routing decision
-  if (routingDecision.routeTo === "STOCK_DATA" && routingDecision.ticker) {
-    // Get stock data and news
-    console.log(`Fetching data for ${routingDecision.ticker}...`);
-    const stockData = await getStockData(routingDecision.ticker);
-    const newsData = await getStockNews(routingDecision.ticker);
-    
-    // Create messages array for OpenAI
-    const messages = [
-      {
-        role: "system",
-        content: `You are a financial research assistant that provides accurate, helpful information about stocks and financial markets. 
-        When discussing stock data, clearly present the price, change, and other metrics in a readable format. 
-        When presenting news, provide brief summaries with sources. 
-        Always include appropriate disclaimers about investment risks.`
-      },
-      // Add chat history
-      ...chatHistory,
-      // Add current query
-      {
-        role: "user",
-        content: `User query: ${query}\n\nStock Data: ${JSON.stringify(stockData)}\n\nNews Data: ${JSON.stringify(newsData)}`
+  // Define OpenAI tools for function calling
+  const tools = [
+    {
+      type: "function",
+      function: {
+        name: "getStockData",
+        description: "Get current price and other information for a specific stock by ticker symbol",
+        parameters: {
+          type: "object",
+          properties: {
+            ticker: {
+              type: "string",
+              description: "The stock ticker symbol, e.g., AAPL for Apple Inc."
+            }
+          },
+          required: ["ticker"]
+        }
       }
-    ];
+    },
+    {
+      type: "function",
+      function: {
+        name: "getStockNews",
+        description: "Get the latest news articles for a specific stock by ticker symbol",
+        parameters: {
+          type: "object",
+          properties: {
+            ticker: {
+              type: "string",
+              description: "The stock ticker symbol, e.g., AAPL for Apple Inc."
+            }
+          },
+          required: ["ticker"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "searchFinancialTerms",
+        description: "Search for definitions of financial terms and concepts in the knowledge base",
+        parameters: {
+          type: "object",
+          properties: {
+            query: {
+              type: "string",
+              description: "The financial term or concept to search for"
+            }
+          },
+          required: ["query"]
+        }
+      }
+    }
+  ];
+  
+  // Create messages array with system prompt and chat history
+  const messages = [
+    {
+      role: "system",
+      content: `You are a financial research assistant that provides accurate information about stocks and financial concepts.
+      
+      When a user asks about a specific stock, use the getStockData and getStockNews functions to retrieve current information.
+      When a user asks about a financial term or concept, use the searchFinancialTerms function to find relevant definitions.
+      
+      Present information clearly, with appropriate formatting. For stock data, include price, change, and other key metrics.
+      For news, provide brief summaries with sources. For financial terms, give clear explanations based on the provided definitions.
+      
+      Always include appropriate disclaimers about investment risks when discussing stocks.`
+    },
+    // Add chat history
+    ...chatHistory,
+    // Add current query
+    {
+      role: "user",
+      content: query
+    }
+  ];
+  
+  // Get response from LLM on how to process query
+  console.log("Sending query to OpenAI...");
+  const initialResponse = await openai.chat.completions.create({
+    model: "gpt-3.5-turbo",
+    messages,
+    tools,
+    temperature: 0.1,
+  });
+  
+  const initialMessage = initialResponse.choices[0].message;
+  
+  // Check if the model wants to call a function
+  if (initialMessage.tool_calls) {    
+    // Create an array to store messages for this interaction
+    const messageHistory = [...messages, initialMessage];
     
-    // Generate response using OpenAI with Helicone monitoring
-    const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages,
-      temperature: 0.1,
-    });
-    
-    return response.choices[0].message.content;
-  } else {
-    // This is a financial term query - use RAG
-    console.log("Searching for financial term definitions...");
-    
-    // Get relevant documents from vector store
-    const results = await vectorStore.similaritySearch(query, 2);
-    
-    // Add Helicone property for relevant document count
-    const hasRelevantResults = results.length > 0;
-    
-    // Check if we have relevant results
-    if (!hasRelevantResults || results[0].score < 0.7) {
-      return "I don't have specific information about this financial term or concept in my knowledge base. For reliable financial information, please consider consulting a financial advisor, visiting financial education websites like Investopedia, or checking resources from financial regulatory bodies.";
+    // Process each tool call
+    for (const toolCall of initialMessage.tool_calls) {
+      const functionName = toolCall.function.name;
+      const functionArgs = JSON.parse(toolCall.function.arguments);
+      
+      let functionResponse;
+      
+      // Execute the appropriate function based on the call
+      if (functionName === "getStockData") {
+        console.log(`Fetching stock data for ${functionArgs.ticker}...`);
+        functionResponse = await getStockData(functionArgs.ticker);
+      } else if (functionName === "getStockNews") {
+        console.log(`Fetching news for ${functionArgs.ticker}...`);
+        functionResponse = await getStockNews(functionArgs.ticker);
+      } else if (functionName === "searchFinancialTerms") {
+        console.log(`Searching for financial terms matching: ${functionArgs.query}`);
+        const searchResults = await searchFinancialTerms(functionArgs.query, vectorStore);
+        
+        if (searchResults.found) {
+          functionResponse = {
+            found: true,
+            definitions: searchResults.documents.map(doc => doc.pageContent)
+          };
+        } else {
+          functionResponse = {
+            found: false,
+            message: searchResults.message
+          };
+        }
+      }      
+      
+      // Add the function response to the message history
+      messageHistory.push({
+        role: "tool",
+        tool_call_id: toolCall.id,
+        name: functionName,
+        content: JSON.stringify(functionResponse)
+      });
     }
     
-    // Create messages array for OpenAI
-    const messages = [
-      {
-        role: "system",
-        content: `You are a financial research assistant that provides accurate definitions of financial terms and concepts. 
-        Use ONLY the provided context to answer questions, without adding any information not contained in the context.
-        If the provided context doesn't fully address the user's question, acknowledge the limitations of your response.
-        Keep your responses clear, concise, and educational.`
-      },
-      // Add chat history
-      ...chatHistory,
-      // Add current query
-      {
-        role: "user",
-        content: `User query: ${query}\n\nRelevant information:\n${results.map(doc => doc.pageContent).join('\n\n')}`
-      }
-    ];
-    
-    // Generate response using OpenAI with RAG context and Helicone monitoring
-    const response = await openai.chat.completions.create({
+    // Get a final response from the model with the function results
+    console.log("Getting final response with tool results...");
+    const finalResponse = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
-      messages,
+      messages: messageHistory,
       temperature: 0.1,
     });
     
-    return response.choices[0].message.content;
+    return finalResponse.choices[0].message.content;
+  } else {
+    // If no function was called, return the initial response
+    return initialMessage.content;
   }
 }
 
