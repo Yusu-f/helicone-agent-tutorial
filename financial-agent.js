@@ -24,197 +24,112 @@ const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY;
 // Initialize chat history
 const chatHistory = [];
 
-// Sample financial terms for RAG - definitions of common finance terms
-const financialTerms = [
+// Sample company profiles for RAG - fake financial data
+const companyProfiles = [
   `
-  # P/E Ratio (Price-to-Earnings Ratio)
+  # TechVision Inc. (TVIX)
   
-  A valuation ratio calculated by dividing a company's current share price by its earnings per share (EPS).
+  Industry: Technology
+  Founded: 2005
+  Headquarters: San Francisco, CA
   
-  A high P/E ratio may indicate that investors expect higher growth in the future compared to companies with a lower P/E.
-  However, a high P/E ratio might also suggest that a stock is overvalued.
+  TechVision is a leading AI and machine learning company specializing in computer vision solutions. Their flagship product, VisionCore, is used by major automotive manufacturers for autonomous driving systems.
   
-  The average P/E ratio varies by industry and market conditions. As of 2023, the average P/E ratio for the S&P 500 is approximately 20-25.
+  Recent developments:
+  - Announced partnership with AutoDrive to enhance autonomous vehicle safety features
+  - Introduced new AI chip with 40% better performance than previous generation
+  - Expanding into healthcare imaging with acquisition of MedSight Technologies
+  
+  Financial highlights:
+  - Annual revenue: $3.2B (up 18% YoY)
+  - Profit margin: 22%
+  - R&D spending: $780M (24% of revenue)
   `,
   `
-  # Market Capitalization
+  # GreenEnergy Corp (GRNE)
   
-  The total dollar market value of a company's outstanding shares of stock. Calculated by multiplying the total number of a company's outstanding shares by the current market price of one share.
+  Industry: Renewable Energy
+  Founded: 2010
+  Headquarters: Austin, TX
   
-  Market cap classifications:
-  - Mega-cap: $200 billion+
-  - Large-cap: $10-200 billion
-  - Mid-cap: $2-10 billion
-  - Small-cap: $300 million-$2 billion
-  - Micro-cap: $50-300 million
-  - Nano-cap: Below $50 million
+  GreenEnergy specializes in solar and wind energy solutions with a focus on energy storage technology. Their battery systems are used in both residential and commercial applications.
+  
+  Recent developments:
+  - Launched next-generation home battery with 30% increased capacity
+  - Secured $500M contract to build solar farm in Nevada
+  - Expanding manufacturing facilities in Texas and Arizona
+  
+  Financial highlights:
+  - Annual revenue: $1.8B (up 25% YoY)
+  - Profit margin: 14%
+  - Net cash position: $620M
   `,
   `
-  # Dividend Yield
+  # HealthPlus Inc. (HLTH)
   
-  A financial ratio that shows how much a company pays out in dividends each year relative to its stock price.
+  Industry: Healthcare
+  Founded: 1998
+  Headquarters: Boston, MA
   
-  Calculated as: Annual Dividends per Share / Price per Share
+  HealthPlus develops innovative medical devices and digital health platforms. Their diabetes management system has captured significant market share in the US.
   
-  High dividend yields may indicate:
-  - The stock is undervalued
-  - The company is mature and not reinvesting as much in growth
-  - In some cases, unsustainable dividend payments
+  Recent developments:
+  - FDA approval for next-generation continuous glucose monitor
+  - Expanded telemedicine platform to include mental health services
+  - Strategic partnership with major insurance providers
   
-  Sectors known for higher dividend yields include utilities, telecommunications, and some consumer staples.
+  Financial highlights:
+  - Annual revenue: $2.4B (up 12% YoY)
+  - Profit margin: 18%
+  - International sales: 35% of revenue
   `,
   `
-  # Bull Market
+  # DigitalFinance Group (DFG)
   
-  A financial market condition where prices are rising or expected to rise. Typically characterized by:
+  Industry: Fintech
+  Founded: 2015
+  Headquarters: New York, NY
   
-  - Investor confidence and optimism
-  - Economic strength
-  - Rising stock prices, typically at least 20% from recent lows
-  - Increased trading volume and market participation
+  DigitalFinance provides blockchain-based payment solutions and digital banking services to both consumers and businesses.
   
-  The longest bull market in U.S. history lasted from 2009 to 2020, following the financial crisis.
+  Recent developments:
+  - Launched small business lending platform with AI-powered risk assessment
+  - Obtained banking license in European Union
+  - Integrated with major e-commerce platforms
+  
+  Financial highlights:
+  - Annual revenue: $950M (up 40% YoY)
+  - Profit margin: 8%
+  - User base: 12 million (up 30% YoY)
   `,
   `
-  # Bear Market
+  # ConsumerBrands Corp (CNBC)
   
-  A financial market condition where prices are falling or expected to fall. Typically characterized by:
+  Industry: Consumer Goods
+  Founded: 1975
+  Headquarters: Chicago, IL
   
-  - Investor pessimism and negative sentiment
-  - Economic weakness or uncertainty
-  - Falling stock prices, typically at least 20% from recent highs
-  - Reduced trading volume and market participation
+  ConsumerBrands manages a portfolio of household products, personal care items, and food brands with strong presence in North America and Europe.
   
-  Bear markets often precede economic recessions but not always.
-  `,
-  `
-  # Bonds
+  Recent developments:
+  - Sustainability initiative to make all packaging recyclable by 2026
+  - Expansion into Asian markets
+  - Divested underperforming snack food division
   
-  Debt securities where an investor loans money to an entity (corporate or governmental) that borrows the funds for a defined period of time at a fixed interest rate.
-  
-  Key characteristics:
-  - Face/par value: The amount paid to the bondholder at maturity
-  - Coupon rate: The interest rate paid on the face value
-  - Maturity date: When the bond issuer returns the principal to investors
-  - Yield: The total return anticipated on a bond if held until maturity
-  
-  Types include Treasury bonds, municipal bonds, corporate bonds, and junk bonds.
-  `,
-  `
-  # ETF (Exchange-Traded Fund)
-  
-  An investment fund traded on stock exchanges, holding assets such as stocks, bonds, or commodities. ETFs typically track an index, sector, commodity, or other asset.
-  
-  Key features:
-  - Trade like stocks on exchanges throughout the day
-  - Usually have lower expense ratios than mutual funds
-  - Often more tax efficient than mutual funds
-  - Provide diversification similar to mutual funds
-  - Most ETFs are passively managed to track an index
-  
-  Popular examples include SPY (S&P 500 ETF), QQQ (Nasdaq-100 ETF), and VTI (Vanguard Total Stock Market ETF).
-  `,
-  `
-  # Mutual Fund
-  
-  An investment vehicle made up of a pool of money collected from many investors to invest in securities such as stocks, bonds, and other assets.
-  
-  Key features:
-  - Professionally managed by fund managers
-  - Priced once per day after market close (NAV)
-  - May have minimum investment requirements
-  - Available in active or passive management styles
-  - Can have higher expense ratios than ETFs
-  
-  Types include stock funds, bond funds, money market funds, target-date funds, and balanced/hybrid funds.
-  `,
-  `
-  # EBITDA (Earnings Before Interest, Taxes, Depreciation, and Amortization)
-  
-  A measure of a company's overall financial performance, used as an alternative to net income in some circumstances.
-  
-  EBITDA = Revenue - Expenses (excluding interest, taxes, depreciation, and amortization)
-  
-  EBITDA can provide a clearer picture of operating performance by eliminating the effects of financing and accounting decisions. However, it does not account for capital expenditures, which can be significant for some businesses.
-  `,
-  `
-  # IPO (Initial Public Offering)
-  
-  The process of offering shares of a private corporation to the public in a new stock issuance for the first time.
-  
-  Key aspects:
-  - Allows companies to raise capital from public investors
-  - Typically involves investment banks as underwriters
-  - Requires extensive financial disclosure and regulatory filings
-  - Share price is determined through underwriter's due diligence and market demand
-  - Often includes a "quiet period" before and after the offering
-  
-  Notable recent IPOs include Airbnb, Coinbase, and Rivian.
-  `,
-  `
-  # ROI (Return on Investment)
-  
-  A performance measure used to evaluate the efficiency or profitability of an investment relative to its cost.
-  
-  ROI = (Net Profit / Cost of Investment) × 100%
-  
-  A higher ROI indicates a more efficient investment. However, ROI does not account for time held or risk involved, making it somewhat limited for comparing investments.
-  `,
-  `
-  # Liquidity
-  
-  The ease with which an asset or security can be converted into cash without affecting its market price.
-  
-  High liquidity assets:
-  - Cash and cash equivalents
-  - Major currencies
-  - Blue-chip stocks
-  - Treasury bills
-  
-  Low liquidity assets:
-  - Real estate
-  - Private company shares
-  - Collectibles
-  - Thinly traded securities
-  
-  Liquidity risk refers to the possibility that an investor may not be able to buy or sell an investment quickly enough in the market to prevent a loss.
-  `,
-  `
-  # Hedge Fund
-  
-  A pooled investment fund that uses various complex strategies to earn active returns for its investors. Typically only available to accredited or institutional investors.
-  
-  Common strategies:
-  - Long/short equity
-  - Market neutral
-  - Global macro
-  - Event-driven
-  - Quantitative
-  
-  Hedge funds often use leverage, derivatives, and short positions, which can increase both potential returns and risks.
-  `,
-  `
-  # Basis Point
-  
-  A unit of measure used in finance to describe the percentage change in the value of financial instruments or the rate change in an index or other benchmark.
-  
-  One basis point is equivalent to 0.01% (1/100th of a percent) or 0.0001 in decimal form.
-  
-  For example:
-  - An increase from 5.00% to 5.25% is a rise of 25 basis points
-  - A decrease from 3.5% to 3.0% is a drop of 50 basis points
-  
-  Basis points are commonly used when discussing interest rates, yields, and changes in indexes.
+  Financial highlights:
+  - Annual revenue: $8.5B (up 5% YoY)
+  - Profit margin: 15%
+  - Dividend yield: 3.2%
   `
 ];
 
-// Function to initialize the vector store with financial term definitions
+// Function to initialize the vector store with company profiles
 async function initializeVectorStore() {
   const embeddings = new OpenAIEmbeddings({
     openAIApiKey: process.env.OPENAI_API_KEY,
   });
   
-  const docs = financialTerms.map(
+  const docs = companyProfiles.map(
     (text) => new Document({ pageContent: text })
   );
   
@@ -269,19 +184,19 @@ async function getStockNews(ticker) {
   }
 }
 
-// Function to perform vector search for financial terms
-async function searchFinancialTerms(query, vectorStore) {
-  console.log("Searching for financial term definitions in knowledge base...");
+// Function to search for company information
+async function searchCompanyInfo(query, vectorStore) {
+  console.log("Searching for company information in knowledge base...");
   
   // Get relevant documents from vector store with similarity scores
   const resultsWithScores = await vectorStore.similaritySearchWithScore(query, 2);
     
   // Check if we have relevant results with good similarity scores
-  if (resultsWithScores.length === 0 || resultsWithScores[0][1] < 0.7) {
-    console.log("No relevant financial terms found in the knowledge base.");
-    return { 
+  if (resultsWithScores.length === 0 || resultsWithScores[0][1] < 0.9) {
+    console.log("No relevant company information found in the knowledge base.");
+    return {
       found: false,
-      message: "No relevant financial terms found in the knowledge base."
+      message: "No relevant company information found in the knowledge base."
     };
   }
   
@@ -294,154 +209,123 @@ async function searchFinancialTerms(query, vectorStore) {
   };
 }
 
-// Main function to process user queries
-async function processQuery(query, vectorStore) {
-  // Define OpenAI tools for function calling
-  const tools = [
-    {
-      type: "function",
-      function: {
-        name: "getStockData",
-        description: "Get current price and other information for a specific stock by ticker symbol",
-        parameters: {
-          type: "object",
-          properties: {
-            ticker: {
-              type: "string",
-              description: "The stock ticker symbol, e.g., AAPL for Apple Inc."
-            }
-          },
-          required: ["ticker"]
-        }
-      }
-    },
-    {
-      type: "function",
-      function: {
-        name: "getStockNews",
-        description: "Get the latest news articles for a specific stock by ticker symbol",
-        parameters: {
-          type: "object",
-          properties: {
-            ticker: {
-              type: "string",
-              description: "The stock ticker symbol, e.g., AAPL for Apple Inc."
-            }
-          },
-          required: ["ticker"]
-        }
-      }
-    },
-    {
-      type: "function",
-      function: {
-        name: "searchFinancialTerms",
-        description: "Search for definitions of financial terms and concepts in the knowledge base",
-        parameters: {
-          type: "object",
-          properties: {
-            query: {
-              type: "string",
-              description: "The financial term or concept to search for"
-            }
-          },
-          required: ["query"]
-        }
+// Define the tools for our agent
+const tools = [
+  {
+    type: "function",
+    function: {
+      name: "getStockData",
+      description: "Get current price and other market information for a specific stock by ticker symbol",
+      parameters: {
+        type: "object",
+        properties: {
+          ticker: {
+            type: "string",
+            description: "The stock ticker symbol, e.g., AAPL for Apple Inc."
+          }
+        },
+        required: ["ticker"]
       }
     }
-  ];
-  
-  // Create messages array with system prompt and chat history
-  const messages = [
+  },
+  {
+    type: "function",
+    function: {
+      name: "getStockNews",
+      description: "Get the latest news articles for a specific stock by ticker symbol",
+      parameters: {
+        type: "object",
+        properties: {
+          ticker: {
+            type: "string",
+            description: "The stock ticker symbol, e.g., AAPL for Apple Inc."
+          }
+        },
+        required: ["ticker"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "searchCompanyInfo",
+      description: "Search for detailed company information in the knowledge base",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "The company name or topic to search for"
+          }
+        },
+        required: ["query"]
+      }
+    }
+  }
+];
+
+// Simple helper to map tool calls to functions
+async function callHelper(name, args, vectorStore) {
+  switch(name) {
+    case "getStockData":
+      return await getStockData(args.ticker);
+    case "getStockNews":
+      return await getStockNews(args.ticker);
+    case "searchCompanyInfo":
+      return await searchCompanyInfo(args.query, vectorStore);
+    default:
+      return { error: `Unknown tool: ${name}` };
+  }
+}
+
+// Tiny agent loop for processing queries (≤ 20 lines)
+async function processQuery(userQuery, vectorStore) {
+  let messages = [
     {
       role: "system",
-      content: `You are a financial research assistant that provides accurate information about stocks and financial concepts.
-      
-      When a user asks about a specific stock, use the getStockData and getStockNews functions to retrieve current information.
-      When a user asks about a financial term or concept, use the searchFinancialTerms function to find relevant definitions.
-      
-      Present information clearly, with appropriate formatting. For stock data, include price, change, and other key metrics.
-      For news, provide brief summaries with sources. For financial terms, give clear explanations based on the provided definitions.
-      
-      Always include appropriate disclaimers about investment risks when discussing stocks.`
+      content: `You're a financial assistant. Use tools when needed. If you have enough information to answer, reply normally.`
     },
-    // Add chat history
-    ...chatHistory,
-    // Add current query
-    {
-      role: "user",
-      content: query
-    }
+    { role: "user", content: userQuery }
   ];
   
-  // Get response from LLM on how to process query
-  console.log("Sending query to OpenAI...");
-  const initialResponse = await openai.chat.completions.create({
-    model: "gpt-3.5-turbo",
-    messages,
-    tools,
-    temperature: 0.1,
-  });
+  // Add chat history for context if available
+  if (chatHistory.length > 0) {
+    messages.splice(1, 0, ...chatHistory);
+  }
   
-  const initialMessage = initialResponse.choices[0].message;
-  
-  // Check if the model wants to call a function
-  if (initialMessage.tool_calls) {    
-    // Create an array to store messages for this interaction
-    const messageHistory = [...messages, initialMessage];
-    
-    // Process each tool call
-    for (const toolCall of initialMessage.tool_calls) {
-      const functionName = toolCall.function.name;
-      const functionArgs = JSON.parse(toolCall.function.arguments);
-      
-      let functionResponse;
-      
-      // Execute the appropriate function based on the call
-      if (functionName === "getStockData") {
-        console.log(`Fetching stock data for ${functionArgs.ticker}...`);
-        functionResponse = await getStockData(functionArgs.ticker);
-      } else if (functionName === "getStockNews") {
-        console.log(`Fetching news for ${functionArgs.ticker}...`);
-        functionResponse = await getStockNews(functionArgs.ticker);
-      } else if (functionName === "searchFinancialTerms") {
-        console.log(`Searching for financial terms matching: ${functionArgs.query}`);
-        const searchResults = await searchFinancialTerms(functionArgs.query, vectorStore);
-        
-        if (searchResults.found) {
-          functionResponse = {
-            found: true,
-            definitions: searchResults.documents.map(doc => doc.pageContent)
-          };
-        } else {
-          functionResponse = {
-            found: false,
-            message: searchResults.message
-          };
-        }
-      }      
-      
-      // Add the function response to the message history
-      messageHistory.push({
-        role: "tool",
-        tool_call_id: toolCall.id,
-        name: functionName,
-        content: JSON.stringify(functionResponse)
-      });
-    }
-    
-    // Get a final response from the model with the function results
-    console.log("Getting final response with tool results...");
-    const finalResponse = await openai.chat.completions.create({
+  while (true) {
+    console.log("Sending query to OpenAI...");
+    const llmResp = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
-      messages: messageHistory,
+      tools,
+      messages,
       temperature: 0.1,
     });
     
-    return finalResponse.choices[0].message.content;
-  } else {
-    // If no function was called, return the initial response
-    return initialMessage.content;
+    const msg = llmResp.choices[0].message;
+    
+    if (msg.tool_calls && msg.tool_calls.length > 0) {
+      // Execute the helper
+      const toolCall = msg.tool_calls[0];
+      const functionName = toolCall.function.name;
+      const functionArgs = JSON.parse(toolCall.function.arguments);
+      
+      console.log(`Executing ${functionName} with args:`, functionArgs);
+      const toolResult = await callHelper(functionName, functionArgs, vectorStore);
+      
+      // Push feedback & loop
+      messages.push(msg);  // LLM's tool call
+      messages.push({
+        role: "tool",
+        tool_call_id: toolCall.id,
+        name: functionName,
+        content: JSON.stringify(toolResult)
+      });
+      continue;
+    }
+    
+    // No tool call → LLM has produced the final answer
+    return msg.content;
   }
 }
 
@@ -475,7 +359,7 @@ async function main() {
   });
   
   console.log("\n===== Financial Research Assistant =====");
-  console.log("Ask about stock prices, news, or financial terms.");
+  console.log("Ask about stock prices, news, or company information.");
   console.log("Type 'exit' to quit.");
   console.log("=======================================\n");
   
@@ -491,7 +375,7 @@ async function main() {
       try {
         console.log("\nResearching your question...");
         
-        // Process query
+        // Process query with the agentic approach
         const answer = await processQuery(query, vectorStore);
         
         // Display answer
